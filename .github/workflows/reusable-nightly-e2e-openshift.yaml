@@ -63,10 +63,10 @@ on:
 
       # --- WVA-specific (ignored for non-WVA guides) ---
       wva_image_tag:
-        description: 'WVA image tag (only for workload-autoscaling guide)'
+        description: 'WVA image tag — "latest" auto-resolves to newest release'
         required: false
         type: string
-        default: 'v0.5.1'
+        default: 'latest'
       deploy_wva:
         description: 'Deploy WVA controller (true for workload-autoscaling guide)'
         required: false
@@ -136,6 +136,24 @@ jobs:
         with:
           repository: ${{ inputs.caller_repo }}
           ref: ${{ inputs.caller_ref }}
+
+      - name: Resolve image versions
+        if: inputs.deploy_wva
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$WVA_IMAGE_TAG" = "latest" ]; then
+            echo "Resolving 'latest' WVA image tag from GitHub releases..."
+            RESOLVED_TAG=$(gh api repos/llm-d/llm-d-workload-variant-autoscaler/releases/latest --jq '.tag_name' 2>/dev/null || true)
+            if [ -n "$RESOLVED_TAG" ]; then
+              echo "Resolved WVA image tag: $RESOLVED_TAG"
+              echo "WVA_IMAGE_TAG=$RESOLVED_TAG" >> $GITHUB_ENV
+            else
+              echo "::warning::Could not resolve latest release — falling back to 'latest' Docker tag"
+            fi
+          else
+            echo "Using explicit WVA image tag: $WVA_IMAGE_TAG"
+          fi
 
       - name: Extract Go version from go.mod
         run: |
@@ -405,6 +423,9 @@ jobs:
           echo "| Model | $MODEL_ID |" >> $GITHUB_STEP_SUMMARY
           echo "| Accelerator | $ACCELERATOR_TYPE |" >> $GITHUB_STEP_SUMMARY
           echo "| llm-d Release | $LLM_D_RELEASE |" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ inputs.deploy_wva }}" = "true" ]; then
+            echo "| WVA Image Tag | $WVA_IMAGE_TAG |" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "| Request Rate | $REQUEST_RATE req/s |" >> $GITHUB_STEP_SUMMARY
           echo "| Prompts | $NUM_PROMPTS |" >> $GITHUB_STEP_SUMMARY
 
